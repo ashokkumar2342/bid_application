@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Auth;
 
 use App\Admin;
+use App\LoginLog;
 use App\Helpers\MailHelper;
 use App\Helper\MyFuncs;
 use App\Http\Controllers\Controller;
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Session;
+use Log;
+use Jenssegers\Agent\Agent;
 class LoginController extends Controller
 {
 /*
@@ -89,6 +92,7 @@ public function loginPost(Request $request){
                      'status' => 1,
                  ]; 
             if(auth()->guard('admin')->attempt($credentials)) {
+                $this->loginlog($request);
               // $rs_update = DB::select(DB::raw("call `up_login_attempt_action`($user_id, '$from_ip', 1);"));
               if (Auth::guard('admin')->user()->user_type==1) {
                 return redirect()->route('admin.dashboard');
@@ -141,6 +145,71 @@ protected function guard()
   return Auth::guard('admin');
 }
 
+public function loginlog(Request $request){
+    try{
+
+     $agent = new Agent(); 
+     $browser = $agent->browser();
+     $platform = $agent->platform();
+     $device = $agent->device();
+      $ins=array(); 
+      $ip =$this->getIp();
+          $ipinfoAPI="https://pro.ip-api.com/json/$ip?key=IKe2Ubk6uK5jIhN";
+          $json =file_get_contents($ipinfoAPI);
+          $data= (array) json_decode($json); 
+         if ( isset ( $data['city']) ) {
+          $city= $data['city'];
+           $ins["city"]=$city;
+         }
+         if ( isset( $data['country']) ) {
+          $country= $data['country']; 
+           $ins["country"]=$country;
+         }
+          $ins["user_id"]=Auth::guard('admin')->user()->id;
+      $ins["ip"]=$ip; 
+      $ins["device_name"]=$device; 
+      if ($agent->isDesktop()) {
+        $ins["device_type"]='Desktop'; 
+      }elseif ($agent->isPhone()) {
+        $ins["device_type"]='Phone'; 
+      }elseif ($agent->isRobot()) {
+        $ins["device_type"]='Robot'; 
+      } else {
+        $ins["device_type"]='Other'; 
+      } 
+     
+      $ins["browser_name"]=$browser;  
+      $ins["platform_name"]=$platform; 
+      $ins["platform_version"]=$agent->version($platform); 
+      $ins["status"]=1; 
+      $LoginLog = new LoginLog(); 
+      $LoginLog->insArr($ins); 
+ 
+  }catch(\Exception $e){
+    Log::error('SecureDeviceController-loginlog: '.$e->getMessage());         // making log in file
+    
+    return view('error.home');
+  }
+}
+
+public function getIp(){
+    $ip = $_SERVER['REMOTE_ADDR'];
+    if (isset($_SERVER['HTTP_X_FORWARDED_FOR']) && preg_match_all('#\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}#s', $_SERVER['HTTP_X_FORWARDED_FOR'], $matches)) {
+        foreach ($matches[0] AS $xip) {
+            if (!preg_match('#^(10|172\.16|192\.168)\.#', $xip)) {
+                $ip = $xip;
+                break;
+            }
+        }
+    } elseif (isset($_SERVER['HTTP_CLIENT_IP']) && preg_match('/^([0-9]{1,3}\.){3}[0-9]{1,3}$/', $_SERVER['HTTP_CLIENT_IP'])) {
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    } elseif (isset($_SERVER['HTTP_CF_CONNECTING_IP']) && preg_match('/^([0-9]{1,3}\.){3}[0-9]{1,3}$/', $_SERVER['HTTP_CF_CONNECTING_IP'])) {
+        $ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
+    } elseif (isset($_SERVER['HTTP_X_REAL_IP']) && preg_match('/^([0-9]{1,3}\.){3}[0-9]{1,3}$/', $_SERVER['HTTP_X_REAL_IP'])) {
+        $ip = $_SERVER['HTTP_X_REAL_IP'];
+    }
+    return $ip;
+}
 
 public function forgetPassword()
 {
